@@ -1,5 +1,6 @@
 import pytest
-from flaskr.db import get_db
+from flaskr.database import database
+from flaskr.models import Post
 
 
 def test_index(client, auth):
@@ -12,7 +13,7 @@ def test_index(client, auth):
     assert b'Log Out' in response.data
     assert b'test title' in response.data
     assert b'by test on 2018-01-01' in response.data
-    assert b'test\nbody' in response.data
+    assert b'test body' in response.data
     assert b'href="/1/update"' in response.data
 
 
@@ -26,7 +27,7 @@ def test_detail(client, auth):
     assert b'Log Out' in response.data
     assert b'test title' in response.data
     assert b'by test on 2018-01-01' in response.data
-    assert b'test\nbody' in response.data
+    assert b'test body' in response.data
     assert b'href="/1/update"' in response.data
 
 
@@ -43,9 +44,10 @@ def test_login_required(client, path):
 def test_author_required(app, client, auth):
     # change the post author to another user
     with app.app_context():
-        db = get_db()
-        db.execute('UPDATE post SET author_id = 2 WHERE id = 1')
-        db.commit()
+        post = Post.query.filter(Post.id == 1).first()
+        post.author_id = 2
+        database.session.add(post)
+        database.session.commit()
 
     auth.login()
     # current user can't modify other user's post
@@ -70,8 +72,7 @@ def test_create(client, auth, app):
     client.post('/create', data={'title': 'created', 'body': ''})
 
     with app.app_context():
-        db = get_db()
-        count = db.execute('SELECT COUNT(id) FROM post').fetchone()[0]
+        count = Post.query.count()
         assert count == 2
 
 
@@ -81,9 +82,8 @@ def test_update(client, auth, app):
     client.post('/1/update', data={'title': 'updated', 'body': ''})
 
     with app.app_context():
-        db = get_db()
-        post = db.execute('SELECT * FROM post WHERE id = 1').fetchone()
-        assert post['title'] == 'updated'
+        post = Post.query.filter(Post.id == 1).first()
+        assert post.title == 'updated'
 
 
 @pytest.mark.parametrize('path', (
@@ -102,6 +102,5 @@ def test_delete(client, auth, app):
     assert response.headers["Location"] == "/"
 
     with app.app_context():
-        db = get_db()
-        post = db.execute('SELECT * FROM post WHERE id = 1').fetchone()
+        post = Post.query.filter(Post.id == 1).first()
         assert post is None

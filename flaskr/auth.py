@@ -1,21 +1,20 @@
 import functools
-
 from flask import (
     Blueprint, flash, g, redirect, render_template, request, session, url_for
 )
+from flaskr.database import database
+from flaskr.models import User
 from werkzeug.security import check_password_hash, generate_password_hash
-from flaskr.db import get_db
 
 
-bp = Blueprint('auth', __name__, url_prefix='/auth')
+blueprint = Blueprint('auth', __name__, url_prefix='/auth')
 
 
-@bp.route('/register', methods=('GET', 'POST'))
+@blueprint.route('/register', methods=('GET', 'POST'))
 def register():
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
-        db = get_db()
         error = None
 
         if not username:
@@ -23,42 +22,43 @@ def register():
         elif not password:
             error = 'Password is required.'
         
+        registered_user = User.query.filter(User.username == username).first()
+
+        if registered_user is not None:
+            error = f"User {username} is already registered."
+
         if error is None:
-            try:
-                db.execute(
-                    "INSERT INTO user (username, password) VALUES (?, ?)",
-                    (username, generate_password_hash(password)),
-                )
-                db.commit()
-            except db.IntegrityError:
-                error = f"User {username} is already registered."
-            else:
-                return redirect(url_for("auth.login"))
+            password_hash = generate_password_hash(password)
+            user = User(
+                username=username,
+                password=password_hash,
+            )
+            database.session.add(user)
+            database.session.commit()
+            
+            return redirect(url_for("auth.login"))
         
         flash(error)
 
     return render_template('auth/register.html')
 
 
-@bp.route('/login', methods=('GET', 'POST'))
+@blueprint.route('/login', methods=('GET', 'POST'))
 def login():
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
-        db = get_db()
         error = None
-        user = db.execute(
-            'SELECT * FROM user WHERE username = ?', (username,)
-        ).fetchone()
+        user = User.query.filter(User.username == username).first()
 
         if user is None:
             error = 'Incorrect username.'
-        elif not check_password_hash(user['password'], password):
+        elif not check_password_hash(user.password, password):
             error = 'Incorrect password.'
         
         if error is None:
             session.clear()
-            session['user_id'] = user['id']
+            session['user_id'] = user.id
             return redirect(url_for('index'))
         
         flash(error)
@@ -66,22 +66,20 @@ def login():
     return render_template('auth/login.html')
 
 
-@bp.route('/logout')
+@blueprint.route('/logout')
 def logout():
     session.clear()
     return redirect(url_for('index'))
 
 
-@bp.before_app_request
+@blueprint.before_app_request
 def load_logged_in_user():
     user_id = session.get('user_id')
 
     if user_id is None:
         g.user = None
     else:
-        g.user = get_db().execute(
-            'SELECT * FROM user WHERE id = ?', (user_id,)
-        ).fetchone()
+        g.user = User.query.filter(User.id == user_id).first()
 
 
 def login_required(view):
