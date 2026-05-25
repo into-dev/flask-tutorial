@@ -1,5 +1,6 @@
 import click
 from flask import current_app
+from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.orm import DeclarativeBase
 
@@ -10,6 +11,7 @@ class Base(DeclarativeBase):
 
 def init_app(app):
     database.init_app(app)
+    migrate.init_app(app, database)
     app.cli.add_command(init_database_command)
 
 
@@ -27,3 +29,4 @@ def init_database_command():
 
 
 database = SQLAlchemy(model_class=Base)
+migrate = Migrate()
